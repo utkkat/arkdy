@@ -1,25 +1,26 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
-	"context"
+
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 )
 
 func main() {
-	run()
+	hostGen()
 }
 
-func run() {
-	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
+func hostGen() (host.Host, error) {
+	ek, err := GenerateEphemeralKey()
 	if err != nil {
 		panic(err)
 	}
@@ -29,7 +30,7 @@ func run() {
 		panic(err)
 	}
 	h, err := libp2p.New(
-		libp2p.Identity(priv),
+		libp2p.Identity(ek.priv),
 		libp2p.ListenAddrStrings(
 			"/ip4/0.0.0.0/tcp/9000",
 			"/ip4/0.0.0.0/udp/9000/quic-v1",
@@ -46,7 +47,6 @@ func run() {
 	if err != nil {
 		panic(err)
 	}
-	defer h.Close()
 	log.Printf("my hosts ID is %s\n", h.ID())
 
 	relayAddr := "/ip4/RELAY_IP/tcp/4001/p2p/RELAY_PEER_ID" //TODO: Replace with act.
@@ -54,7 +54,7 @@ func run() {
 	relayInfo, err := peer.AddrInfoFromString(relayAddr)
 	if err != nil {
 		log.Printf("Invalid relay address: %v", err)
-		return
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(
@@ -65,10 +65,9 @@ func run() {
 
 	if err := h.Connect(ctx, *relayInfo); err != nil {
 		log.Printf("Failed to connect to relay: %v", err)
-		return
+		return nil, err
 	}
 
 	log.Printf("Connected to relay %s", relayInfo.ID)
-
-	select {}
+	return h, nil
 }
