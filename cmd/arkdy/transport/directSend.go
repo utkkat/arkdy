@@ -1,6 +1,6 @@
 // NOT FINISHED YET!
 
-package main
+package transport
 
 import (
 	"bytes"
