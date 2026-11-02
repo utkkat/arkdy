@@ -15,9 +15,7 @@ import (
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 )
 
-func main() {
-	hostGen()
-}
+var (relayAddr string = "/ip4/RELAY_IP/tcp/4001/p2p/RELAY_PEER_ID") //TODO: Replace with act.
 
 func hostGen() (host.Host, error) {
 	ek, err := GenerateEphemeralKey()
@@ -48,8 +46,6 @@ func hostGen() (host.Host, error) {
 		panic(err)
 	}
 	log.Printf("my hosts ID is %s\n", h.ID())
-
-	relayAddr := "/ip4/RELAY_IP/tcp/4001/p2p/RELAY_PEER_ID" //TODO: Replace with act.
 
 	relayInfo, err := peer.AddrInfoFromString(relayAddr)
 	if err != nil {

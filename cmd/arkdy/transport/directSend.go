@@ -7,9 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"flag"
-	"fmt"
-	"io"
 	"log"
 	"strings"
 	"time"
@@ -39,7 +36,7 @@ func directSend(h host.Host, targetPeerID peer.ID, message string) error {
 		return err
 	}
 	h.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
-	stream, err := h.NewStream(context.Background(), info.ID, "/direct-send/1.0.0")
+	stream, err := h.NewStream(context.Background(), info.ID, protocolID)
 	if err != nil {
 		return err
 	}
