@@ -1,4 +1,4 @@
-module example/hello
+module github.com/utkkat/arkdy
 
 go 1.26.8
 

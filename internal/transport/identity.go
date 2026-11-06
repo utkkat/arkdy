@@ -15,7 +15,7 @@ type EphKey struct {
 func GenerateEphemeralKey() (*EphKey, error) {
 	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	peerID, err := peer.IDFromPrivateKey(priv)
 	if err != nil {

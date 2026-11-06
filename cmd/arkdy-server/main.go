@@ -1,31 +1,19 @@
-package arkdyserver
+// Command arkdy-server is the relay entry point. Startup is not implemented yet.
+package main
 
-
+// Импорты для будущего запуска сервера. Раскомментировать при использовании API.
+// Внутренний relay: ../../internal/relay/doc.go; запуск сервера ещё не реализован.
+/*
 import (
-	"context"
-	"crypto/rand"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
+	"context"   // Context для времени жизни сервера: https://pkg.go.dev/context
+	"log"       // Сообщения об ошибках запуска: https://pkg.go.dev/log
+	"os"        // os.Interrupt: https://pkg.go.dev/os#Interrupt
+	"os/signal" // NotifyContext для штатного завершения: https://pkg.go.dev/os/signal#NotifyContext
 
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
-	ma "github.com/multiformats/go-multiaddr"
+	"github.com/utkkat/arkdy/internal/relay" // Инициализация relay после появления соответствующего API.
 )
+*/
 
-
-func GeneratePrivateKey() (crypto.PrivKey, error) {
-	
-}
-
-func LoadPrivateKey(path string) (crypto.PrivKey, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return crypto.UnmarshalPrivateKey(data)
+func main() {
+	// TODO: initialize and run the libp2p relay using internal/relay.
 }
