@@ -1,17 +1,42 @@
 package ratchet
 
-// Для заполнения буфера достаточно встроенных len, make и copy: импорт не требуется.
-// Для двоичного поля исходной длины выбран encoding/binary; шаблон импортов:
-/*
 import (
-	// binary.BigEndian/LittleEndian кодируют длину; порядок байтов фиксируется форматом сообщения.
-	// https://pkg.go.dev/encoding/binary
 	"encoding/binary"
-	// Ошибки превышения допустимого размера или повреждённого padding.
-	// https://pkg.go.dev/errors
-	"errors"
+	"fmt"
 )
-*/
-// Архитектура задаёт размерные корзины 256 B / 1 KiB / 4 KiB / 16 KiB.
-// Формат восстановления исходной длины ещё не определён; импорт не задаёт этот формат.
-// Padding выполняется перед шифрованием; это не блочное дополнение PKCS#7.
+
+const MaxMessageSize = 16*1024 - 4
+
+var paddingBuckets = [...]int{256, 1024, 4096, 16384}
+
+func Pad(message []byte) ([]byte, error) {
+	for _, size := range paddingBuckets {
+		if len(message) <= size-4 {
+			padded := make([]byte, size)
+			binary.BigEndian.PutUint32(padded, uint32(len(message)))
+			copy(padded[4:], message)
+			return padded, nil
+		}
+	}
+	return nil, fmt.Errorf("message exceeds %d bytes", MaxMessageSize)
+}
+
+func Unpad(padded []byte) ([]byte, error) {
+	validSize := false
+	for _, size := range paddingBuckets {
+		validSize = validSize || len(padded) == size
+	}
+	if !validSize {
+		return nil, fmt.Errorf("invalid padding bucket")
+	}
+	length := binary.BigEndian.Uint32(padded[:4])
+	if length > uint32(len(padded)-4) {
+		return nil, fmt.Errorf("invalid padded message length")
+	}
+	for _, b := range padded[4+int(length):] {
+		if b != 0 {
+			return nil, fmt.Errorf("invalid padding bytes")
+		}
+	}
+	return padded[4 : 4+int(length)], nil
+}

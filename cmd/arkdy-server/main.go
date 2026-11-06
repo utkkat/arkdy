@@ -1,4 +1,3 @@
-// Command arkdy-server is the relay entry point. Startup is not implemented yet.
 package main
 
 // Импорты для будущего запуска сервера. Раскомментировать при использовании API.
@@ -15,5 +14,4 @@ import (
 */
 
 func main() {
-	// TODO: initialize and run the libp2p relay using internal/relay.
 }

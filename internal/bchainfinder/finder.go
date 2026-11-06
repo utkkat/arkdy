@@ -1,6 +1,3 @@
-// Package bchainfinder looks up public identity records by username and verifies
-// their signatures. Peer IDs and IP addresses do not belong in these records.
-// Blockchain lookup is not implemented yet.
 package bchainfinder
 
 // Выбраны ethclient для EVM-поиска и libsignal/ecc для проверки подписи IK.
@@ -19,4 +16,3 @@ import (
 */
 // Формат записи и проверка цепочки обновлений требуют реализации; выбор SDK не
 // подтверждает принадлежность имени автоматически. См. ../../docs/dependencies.md.
-// Проверенный IK передаётся координатору для закрепления в локальном контакте.

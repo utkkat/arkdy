@@ -14,13 +14,11 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-
 const defaultRelayConnectTimeout = 15 * time.Second
 
 type HostConfig struct {
-	//local start: []string{"/ip4/127.0.0.1/tcp/0"}.
-	ListenAddrs []string
-	RelayAddr string
+	ListenAddrs         []string
+	RelayAddr           string
 	RelayConnectTimeout time.Duration
 }
 

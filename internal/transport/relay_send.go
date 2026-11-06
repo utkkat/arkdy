@@ -7,18 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-
-func relaySend(h host.Host, targetPeerID peer.ID, message string) error {
-	stream, err := h.NewStream(context.Background(), targetPeerID, protocolID)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-
-	_, err = stream.Write([]byte(message))
-	if err != nil {
-		return err
-	}
-
-	return nil
+func RelaySend(ctx context.Context, h host.Host, target peer.ID, envelope []byte) error {
+	return DirectSend(ctx, h, target, envelope)
 }

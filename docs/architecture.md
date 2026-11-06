@@ -19,17 +19,18 @@ record which integration details remain unfinished.
 | push | `internal/push` | Register device tokens and notify through a gateway using an opaque push blob. |
 | db | `internal/db` | Store sealed history, settings, contacts, wrapped ratchet state and prekeys, and the encrypted outbox. |
 
-`internal/core` preserves the existing client core placeholder. It is the place
-for coordinating the first-contact and message workflows shown at the bottom of
-the diagram; it does not replace the individual components above.
+`internal/core` coordinates the local console client's direct connection,
+prekey bootstrap, encryption and receive queue. It is also the place for future
+first-contact and mailbox workflows shown at the bottom of the diagram; it does
+not replace the individual components above.
 
 `internal/relay` preserves the existing `arkdy-server` key helpers for a standalone
 libp2p relay. A libp2p circuit relay and the diagram's mailbox forwarding node have
 different responsibilities. Mailbox queues and bundle storage belong to
 `internal/mailbox`.
 
-`cmd/arkdy` and `cmd/arkdy-server` are reserved for application startup and wiring.
-Their `main` functions are placeholders until startup is implemented.
+`cmd/arkdy` handles console input/output, flags and shutdown, delegating message
+workflows to core. `cmd/arkdy-server` remains a startup placeholder.
 
 ## Placement changes
 
@@ -69,3 +70,29 @@ The database stores protected representations: sealed history, wrapped ratchet
 state and prekeys, and encrypted outbox envelopes. Decrypting message envelopes
 is a ratchet responsibility; opening sealed local history is a vault
 responsibility.
+
+## Local console implementation
+
+The console currently implements only the opt-in direct path for manually
+exchanged libp2p addresses. `core` coordinates `transport` and `ratchet`;
+`transport` handles authenticated peers, streams, framing and opaque bytes;
+`ratchet` owns identity/prekeys, libsignal sessions, padding and decryption.
+Console formatting and commands stay in `cmd/arkdy`.
+
+To support a local run without external services, public bundles are fetched
+from the peer over a separate authenticated libp2p protocol. This bootstrap is
+not the diagram's mailbox introduction flow. Signal identities are pinned in
+memory using TOFU for each manually selected PeerID. Both identity families and
+all session state are discarded when the process exits; persistent long-term
+identity and history still require vault/db integration.
+
+The provisional local wire format uses existing generated Protobuf types:
+`BytesValue` for frames and `Struct` for public bundles. No new schema/source files
+are needed. A data payload is a libsignal message-type byte followed by the
+library's Protobuf serialization. Padding contains a uint32 big-endian original
+length followed by text and zero bytes up to the next documented size bucket.
+TLS/Noise protects libsignal header/identity metadata in transit on this direct
+connection. The format does not implement a hidden-sender mailbox envelope and
+must be replaced/encapsulated before mailbox integration. The normal persistent
+outbox, sealed history, blockchain, mailbox and push workflows above remain the
+target architecture, not functionality supplied by this local mode.

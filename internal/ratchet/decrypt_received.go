@@ -1,20 +1,74 @@
 package ratchet
 
-// Выбран go.mau.fi/libsignal; шаблон импортов для расшифровки.
-/*
 import (
-	"context" // Контекст операции расшифровки: https://pkg.go.dev/context
+	"context"
+	"crypto/aes"
+	"fmt"
 
-	// SignalMessage и PreKeySignalMessage описывают обычное и начальное сообщение.
-	// https://pkg.go.dev/go.mau.fi/libsignal/protocol
 	"go.mau.fi/libsignal/protocol"
-	// Cipher.Decrypt и DecryptMessage обрабатывают соответствующий тип сообщения.
-	// https://pkg.go.dev/go.mau.fi/libsignal/session
 	"go.mau.fi/libsignal/session"
 )
-*/
-// Сначала адаптер разбирает защищённый внешний конверт, затем передаёт данные движку.
-// Stores получают и сохраняют защищённое состояние через vault/db, без открытых records на диске.
-// Работа с out-of-order сообщениями и skipped keys относится к состоянию ratchet:
-// https://signal.org/docs/specifications/doubleratchet/
-// Этот файл расшифровывает сетевой конверт; открытие локальной sealed-истории относится к vault.
+
+func (e *Engine) Decrypt(ctx context.Context, remote string, envelope []byte) ([]byte, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(envelope) < 2 {
+		return nil, fmt.Errorf("truncated encrypted envelope")
+	}
+	builder, address := e.builder(remote)
+	cipher := session.NewCipher(builder, address)
+	var padded []byte
+	var err error
+	switch envelope[0] {
+	case protocol.PREKEY_TYPE:
+		structure, decodeErr := e.store.serializer.PreKeySignalMessage.Deserialize(envelope[1:])
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if len(structure.BaseKey) != 33 || len(structure.IdentityKey) != 33 {
+			return nil, fmt.Errorf("invalid prekey message keys")
+		}
+		if _, err := e.parseSignal(structure.Message); err != nil {
+			return nil, err
+		}
+		message, decodeErr := protocol.NewPreKeySignalMessageFromStruct(structure, e.store.serializer.PreKeySignalMessage, e.store.serializer.SignalMessage)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		previousIdentity := e.store.identities[address.String()]
+		padded, err = cipher.DecryptMessage(ctx, message)
+		if err != nil {
+			if previousIdentity == nil {
+				delete(e.store.identities, address.String())
+			} else {
+				e.store.identities[address.String()] = previousIdentity
+			}
+		}
+	case protocol.WHISPER_TYPE:
+		message, decodeErr := e.parseSignal(envelope[1:])
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		padded, err = cipher.Decrypt(ctx, message)
+	default:
+		return nil, fmt.Errorf("unknown encrypted message type %d", envelope[0])
+	}
+	if err != nil {
+		return nil, fmt.Errorf("decrypt message: %w", err)
+	}
+	return Unpad(padded)
+}
+
+func (e *Engine) parseSignal(data []byte) (*protocol.SignalMessage, error) {
+	structure, err := e.store.serializer.SignalMessage.Deserialize(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(structure.RatchetKey) != 33 || len(structure.CipherText) == 0 || len(structure.CipherText)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("invalid ratchet key or ciphertext length")
+	}
+	return protocol.NewSignalMessageFromStruct(structure, e.store.serializer.SignalMessage)
+}

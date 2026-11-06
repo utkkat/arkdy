@@ -1,62 +1,98 @@
-// NOT FINISHED YET!
-
 package transport
 
 import (
-	// context.Background задаёт контекст открытия потока; WithTimeout пригодится для dialTimeout.
-	// https://pkg.go.dev/context
 	"context"
-	// time.Second задаёт длительности подключения и операций ввода-вывода.
-	// https://pkg.go.dev/time#Duration
+	"fmt"
 	"time"
 
-	// host.Host предоставляет NewStream и доступ к Peerstore.
-	// https://pkg.go.dev/github.com/libp2p/go-libp2p@v0.50.0/core/host#Host
 	"github.com/libp2p/go-libp2p/core/host"
-	// peer.ID обозначает узел; AddrInfoFromP2pAddr извлекает ID и адреса из multiaddr.
-	// https://pkg.go.dev/github.com/libp2p/go-libp2p@v0.50.0/core/peer
 	"github.com/libp2p/go-libp2p/core/peer"
-	// Peerstore хранит известные адреса; PermanentAddrTTL задаёт срок их хранения.
-	// https://pkg.go.dev/github.com/libp2p/go-libp2p@v0.50.0/core/peerstore
-	"github.com/libp2p/go-libp2p/core/peerstore"
-	// ma.NewMultiaddr разбирает адрес вида /ip4/.../tcp/.../p2p/..., а не строку PeerID.
-	// https://pkg.go.dev/github.com/multiformats/go-multiaddr@v0.16.1#NewMultiaddr
-	ma "github.com/multiformats/go-multiaddr"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-msgio"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
-
-// Выбранные импорты для будущего кодирования и framing; текущая функция ещё пишет сырые байты:
-// import "github.com/libp2p/go-msgio" // NewVarintWriter: https://pkg.go.dev/github.com/libp2p/go-msgio#NewVarintWriter
-// import "google.golang.org/protobuf/proto" // Marshal: https://pkg.go.dev/google.golang.org/protobuf/proto#Marshal
-// Подключать одновременно с receive_direct.go после определения .proto-схемы конверта.
 
 const (
-	protocolID  = "/arkdy/direct/1.0.0"
-	maxEnvelope = 20 * 1024
-	ioTimeout   = 15 * time.Second
-	dialTimeout = 30 * time.Second
+	protocolID       = protocol.ID("/arkdy/direct/1.0.0")
+	bundleProtocolID = protocol.ID("/arkdy/prekeys/1.0.0")
+	maxEnvelope      = 20 * 1024
+	ioTimeout        = 15 * time.Second
+	dialTimeout      = 30 * time.Second
 )
 
-func directSend(h host.Host, targetPeerID peer.ID, message string) error {
-	// TODO: адрес получать отдельно от PeerID; string(targetPeerID) не является multiaddr.
-	targetAddr, err := ma.NewMultiaddr(string(targetPeerID))
+func DirectSend(ctx context.Context, h host.Host, target peer.ID, envelope []byte) error {
+	if len(envelope) == 0 {
+		return fmt.Errorf("empty envelope")
+	}
+	ack, err := exchange(ctx, h, target, protocolID, envelope)
 	if err != nil {
 		return err
 	}
-	info, err := peer.AddrInfoFromP2pAddr(targetAddr)
-	if err != nil {
-		return err
+	if len(ack) != 0 {
+		return fmt.Errorf("unexpected delivery acknowledgement")
 	}
-	h.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
-	stream, err := h.NewStream(context.Background(), info.ID, protocolID)
+	return nil
+}
+
+func RequestPreKeyBundle(ctx context.Context, h host.Host, target peer.ID) ([]byte, error) {
+	return exchange(ctx, h, target, bundleProtocolID, nil)
+}
+
+func exchange(ctx context.Context, h host.Host, target peer.ID, id protocol.ID, payload []byte) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	frame, err := marshalFrame(payload)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	stream, err := h.NewStream(dialCtx, target, id)
+	if err != nil {
+		return nil, fmt.Errorf("open stream to %s: %w", target, err)
 	}
 	defer stream.Close()
-
-	_, err = stream.Write([]byte(message))
-	if err != nil {
-		return err
+	stop := context.AfterFunc(ctx, func() { _ = stream.Reset() })
+	defer stop()
+	deadline := time.Now().Add(ioTimeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
 	}
+	if err := stream.SetDeadline(deadline); err != nil {
+		_ = stream.Reset()
+		return nil, err
+	}
+	if err := msgio.NewVarintWriter(stream).WriteMsg(frame); err != nil {
+		_ = stream.Reset()
+		return nil, fmt.Errorf("write envelope: %w", err)
+	}
+	response, err := readFrame(msgio.NewVarintReaderSize(stream, maxEnvelope))
+	if err != nil {
+		_ = stream.Reset()
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	return response, nil
+}
 
-	return nil
+func marshalFrame(payload []byte) ([]byte, error) {
+	msg := wrapperspb.Bytes(payload)
+	if proto.Size(msg) > maxEnvelope {
+		return nil, fmt.Errorf("envelope exceeds %d bytes", maxEnvelope)
+	}
+	return proto.Marshal(msg)
+}
+
+func readFrame(reader msgio.ReadCloser) ([]byte, error) {
+	frame, err := reader.ReadMsg()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.ReleaseMsg(frame)
+	var msg wrapperspb.BytesValue
+	if err := proto.Unmarshal(frame, &msg); err != nil {
+		return nil, fmt.Errorf("decode envelope: %w", err)
+	}
+	return msg.Value, nil
 }
